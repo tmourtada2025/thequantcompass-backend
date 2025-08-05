@@ -1,37 +1,41 @@
+from metaapi_cloud_sdk import MetaApi
 import os
-from dotenv import load_dotenv
-from metaapi.cloud_metaapi_sdk import MetaApi
+import asyncio
 
-load_dotenv()
+# Your MetaApi token from environment variables (set this in Render's settings)
+META_API_TOKEN = os.getenv("META_API_TOKEN")
 
-TOKEN = os.getenv("METAAPI_TOKEN")
-ACCOUNT_ID = os.getenv("METAAPI_ACCOUNT_ID")
-SYMBOLS = ['US30.cash', 'XAUUSD']
+# Your account ID (set this in environment variables too)
+ACCOUNT_ID = os.getenv("ACCOUNT_ID")
+
+metaapi = MetaApi(META_API_TOKEN)
+
 
 async def fetch_prices():
-    metaapi = MetaApi(TOKEN)
-
     try:
-        print(f"Connecting to account: {ACCOUNT_ID}")
         account = await metaapi.metatrader_account_api.get_account(ACCOUNT_ID)
-        connection = await account.get_rpc_connection()
+        if account.state != 'DEPLOYED':
+            await account.deploy()
+            await account.wait_deployed()
+
+        connection = account.get_streaming_connection()
         await connection.connect()
         await connection.wait_synchronized()
 
-        results = {}
-
-        for symbol in SYMBOLS:
-            try:
-                price = await connection.get_symbol_price(symbol)
-                results[symbol] = {
-                    'bid': price['bid'],
-                    'ask': price['ask'],
-                    'time': price['time']
-                }
-            except Exception as e:
-                results[symbol] = {'error': str(e)}
-
-        return results
+        # Example: Fetching price for US30 symbol
+        quote = await connection.subscribe_to_market_data('US30')
+        price = connection.price('US30')
+        return {
+            "symbol": "US30",
+            "bid": price['bid'],
+            "ask": price['ask']
+        }
 
     except Exception as e:
-        return {"error": f"Failed to connect: {str(e)}"}
+        return {"error": str(e)}
+
+
+# For local test
+if __name__ == "__main__":
+    result = asyncio.run(fetch_prices())
+    print(result)
