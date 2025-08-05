@@ -1,13 +1,13 @@
 from fastapi import FastAPI
+import asyncio
 from metaapi_client import fetch_prices
 
 app = FastAPI()
 
-@app.get("/")
-def read_root():
-    return {"message": "Welcome to TradeEdge Backend"}
-
 @app.get("/prices")
 async def get_prices():
-    prices = await fetch_prices()
-    return prices
+    try:
+        prices = await fetch_prices()
+        return prices
+    except Exception as e:
+        return {"error": str(e)}
