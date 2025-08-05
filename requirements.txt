@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+openai
+metaapi-cloud-sdk
+python-dotenv
+requests
+stripe
