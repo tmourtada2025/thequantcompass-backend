@@ -1,31 +1,24 @@
-import os
-import requests
+# metaapi_client.py  (async version)
+import os, httpx, asyncio
 from dotenv import load_dotenv
 
 load_dotenv()
+TOKEN       = os.getenv("METAAPI_TOKEN")
+ACCOUNT_ID  = os.getenv("METAAPI_ACCOUNT_ID")
+BASE_URL    = "https://mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai"
 
-TOKEN = os.getenv("METAAPI_TOKEN")
-ACCOUNT_ID = os.getenv("METAAPI_ACCOUNT_ID")
+async def fetch_prices(symbol: str = "US30.cash"):
+    url = f"{BASE_URL}/users/current/accounts/{ACCOUNT_ID}/symbols/{symbol}/price"
+    headers = {"Authorization": f"Bearer {TOKEN}"}
 
-def fetch_prices():
-    try:
-        symbol = "US30.cash"
-        url = f"https://mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai/users/current/accounts/{ACCOUNT_ID}/symbols/{symbol}/price"
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.get(url, headers=headers)
+        r.raise_for_status()
+        data = r.json()
 
-        headers = {
-            "Authorization": f"Bearer {TOKEN}"
-        }
-
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-
-        data = response.json()
-        return {
-            "symbol": symbol,
-            "bid": data.get("bid"),
-            "ask": data.get("ask"),
-            "time": data.get("time")
-        }
-
-    except Exception as e:
-        return {"error": str(e)}
+    return {
+        "symbol": symbol,
+        "bid":   data.get("bid"),
+        "ask":   data.get("ask"),
+        "time":  data.get("time")
+    }
