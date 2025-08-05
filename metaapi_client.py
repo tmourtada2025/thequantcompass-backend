@@ -1,46 +1,45 @@
 import os
-import asyncio
-from dotenv import load_dotenv
-from metaapi_cloud_sdk import MetaApi
+from metaapi.cloud_metaapi_sdk import MetaApi
 
-# Load environment variables
-load_dotenv()
-
-# Read sensitive config from environment
-META_API_TOKEN = os.getenv("META_API_TOKEN")
+# Read from Render environment variables directly
+TOKEN = os.getenv("META_API_TOKEN")
 ACCOUNT_ID = os.getenv("ACCOUNT_ID")
 
-# Fail early if any are missing
-if not META_API_TOKEN or not ACCOUNT_ID:
+if not TOKEN or not ACCOUNT_ID:
     raise ValueError("❌ Missing META_API_TOKEN or ACCOUNT_ID in environment variables.")
 
-# Initialize MetaApi
-metaapi = MetaApi(META_API_TOKEN)
+SYMBOLS = ['US30.cash', 'XAUUSD']
 
 async def fetch_prices():
-    try:
-        account = await metaapi.metatrader_account_api.get_account(ACCOUNT_ID)
-        if account.state != 'DEPLOYED':
-            await account.deploy()
-            await account.wait_deployed()
+    metaapi = MetaApi(TOKEN)
 
-        connection = account.get_streaming_connection()
-        await connection.connect()
-        await connection.wait_synchronized()
+    print("Connecting to MetaAPI...")
+    accounts = await metaapi.metatrader_account_api.get_accounts()
 
-        await connection.subscribe_to_market_data('US30')
-        price = connection.price('US30')
+    # Use the first connected and deployed account
+    account = next((acc for acc in accounts if acc['state'] == 'DEPLOYED'), None)
 
-        return {
-            "symbol": "US30",
-            "bid": price['bid'],
-            "ask": price['ask']
-        }
+    if not account:
+        raise Exception("No deployed MetaTrader accounts found.")
 
-    except Exception as e:
-        return {"error": str(e)}
+    account_id = account['id']
+    print(f"Connected to account ID: {account_id}")
 
-# For local testing
-if __name__ == "__main__":
-    result = asyncio.run(fetch_prices())
-    print(result)
+    connection = await metaapi.metatrader_account_api.get_account(account_id)
+    connection = await connection.connect()
+    await connection.wait_synchronized()
+
+    results = {}
+
+    for symbol in SYMBOLS:
+        try:
+            price = await connection.get_symbol_price(symbol)
+            results[symbol] = {
+                'bid': price['bid'],
+                'ask': price['ask'],
+                'time': price['time']
+            }
+        except Exception as e:
+            results[symbol] = {'error': str(e)}
+
+    return results
