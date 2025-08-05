@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from metaapi.cloud_metaapi_sdk import MetaApi  # ✅ Corrected import
+from metaapi_cloud_sdk import MetaApi  # ✅ Correct import
 
 # Load environment variables
 load_dotenv()
@@ -24,5 +24,5 @@ async def fetch_prices():
     await connection.connect()
     await connection.wait_synchronized()
 
-    us30_price = await connection.subscribe_to_market_data('US30')
-    return {"symbol": "US30", "price": us30_price}
+    price_data = await connection.subscribe_to_market_data('US30')
+    return {"symbol": "US30", "price": price_data}
