@@ -1,28 +1,43 @@
 import os
 from dotenv import load_dotenv
-from metaapi_cloud_sdk import MetaApi  # ✅ Correct import
+from metaapi_cloud_sdk import MetaApi
 
-# Load environment variables
 load_dotenv()
 
-META_API_TOKEN = os.getenv("META_API_TOKEN")
-ACCOUNT_ID = os.getenv("ACCOUNT_ID")
+TOKEN = os.getenv("METAAPI_TOKEN")
+ACCOUNT_ID = os.getenv("METAAPI_ACCOUNT_ID")  # Optional if not hardcoded
 
-if not META_API_TOKEN or not ACCOUNT_ID:
-    raise ValueError("❌ Missing META_API_TOKEN or ACCOUNT_ID in environment variables.")
+SYMBOLS = ['US30.cash', 'XAUUSD']
 
-metaapi = MetaApi(META_API_TOKEN)
 
 async def fetch_prices():
-    account = await metaapi.metatrader_account_api.get_account(ACCOUNT_ID)
-    if account.state != 'DEPLOYED':
-        print(f'Account {ACCOUNT_ID} is not deployed yet. Deploying now...')
-        await account.deploy()
-        await account.wait_until_deployed()
+    metaapi = MetaApi(TOKEN)
 
-    connection = account.get_streaming_connection()
-    await connection.connect()
+    print("Connecting to MetaAPI...")
+    accounts = await metaapi.metatrader_account_api.get_accounts()
+
+    account = next((acc for acc in accounts if acc['state'] == 'DEPLOYED'), None)
+    if not account:
+        raise Exception("No deployed MetaTrader accounts found.")
+
+    account_id = account['id']
+    print(f"Connected to account ID: {account_id}")
+
+    connection = await metaapi.metatrader_account_api.get_account(account_id)
+    connection = await connection.connect()
     await connection.wait_synchronized()
 
-    price_data = await connection.subscribe_to_market_data('US30')
-    return {"symbol": "US30", "price": price_data}
+    results = {}
+
+    for symbol in SYMBOLS:
+        try:
+            price = await connection.get_symbol_price(symbol)
+            results[symbol] = {
+                'bid': price['bid'],
+                'ask': price['ask'],
+                'time': price['time']
+            }
+        except Exception as e:
+            results[symbol] = {'error': str(e)}
+
+    return results
