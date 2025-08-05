@@ -5,9 +5,9 @@ from metaapi_client import fetch_prices
 app = FastAPI()
 
 @app.get("/")
-def home():
+async def home():
     return {"status": "TradeEdge backend is live"}
 
 @app.get("/prices")
-def prices():          # regular (non-async) function
-    return fetch_prices()
+async def prices():
+    return await fetch_prices()          # ✅ now it *is* a coroutine
