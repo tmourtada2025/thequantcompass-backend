@@ -1,7 +1,7 @@
 fastapi
 uvicorn
 python-dotenv
-metaapi-cloud-sdk==28.0.7
+metaapi-cloud-sdk==2.2.1
 openai==1.98.0
 requests
 stripe
