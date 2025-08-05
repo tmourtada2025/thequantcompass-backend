@@ -1,54 +1,76 @@
-import os
-import asyncio
-import httpx
-from dotenv import load_dotenv
+# metaapi_client.py
+import os, asyncio, httpx, time
+from fastapi import HTTPException
 
-load_dotenv()  # makes local runs easier; Render uses “Environment” panel
+# Pull secrets that Render already has
+TOKEN  = os.getenv("METAAPI_TOKEN")
+ACC_ID = os.getenv("METAAPI_ACCOUNT_ID")
 
-# ───────────────────────── CONFIG ─────────────────────────
-TOKEN       = os.getenv("METAAPI_TOKEN")      # ⚠️ required
-ACCOUNT_ID  = os.getenv("ACCOUNT_ID")         # ⚠️ required
-REGION      = os.getenv("METAAPI_REGION", "london")  # london / new-york / etc.
+if not TOKEN or not ACC_ID:
+    raise RuntimeError("METAAPI_TOKEN or METAAPI_ACCOUNT_ID is missing")
 
-BASE_URL = f"https://mt-client-api-v1.{REGION}.agiliumtrade.ai"
-SYMBOLS  = ["US30.cash", "XAUUSD"]            # add more if you like
-# ──────────────────────────────────────────────────────────
+# Use the newer, always-resolvable hostname
+BASE_URL = "https://mt-client-api-v1.metaapi.cloud"
 
-if not all([TOKEN, ACCOUNT_ID]):
-    raise ValueError(
-        "❌  METAAPI_TOKEN or ACCOUNT_ID is missing. "
-        "Set them in Render → Environment."
+HEADERS = {"auth-token": TOKEN}
+
+async def _call_metaapi(path: str, params: dict | None = None) -> dict:
+    """
+    Helper that performs an HTTP GET with automatic retries +
+    nice error messages instead of 500s.
+    """
+    url     = f"{BASE_URL}{path}"
+    retries = 3
+    backoff = 0.7
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        for attempt in range(retries):
+            try:
+                r = await client.get(url, headers=HEADERS, params=params)
+                r.raise_for_status()
+                return r.json()
+
+            except httpx.RequestError as e:
+                if attempt == retries - 1:
+                    raise HTTPException(
+                        502,
+                        detail=f"DNS / network error contacting MetaApi: {e}"
+                    )
+                time.sleep(backoff)
+                backoff *= 2
+
+            except httpx.HTTPStatusError as e:
+                # MetaApi gives good JSON bodies – surface them
+                raise HTTPException(
+                    e.response.status_code,
+                    detail=e.response.json()
+                ) from None
+
+
+async def fetch_prices(symbol: str = "US30.cash") -> dict:
+    """
+    Returns the live bid / ask for a single symbol.
+    """
+    data = await _call_metaapi(
+        f"/users/current/accounts/{ACC_ID}/symbols/{symbol}/price"
     )
+    # MetaApi returns an array under 'prices'
+    if not data or not data.get("price"):
+        raise HTTPException(503, detail="Price feed temporarily unavailable")
+    return data["price"]    # {'bid': .., 'ask': .., 'time': ..}
 
-HEADERS = {
-    "auth-token": TOKEN,
-    "accept": "application/json",
-}
 
-async def fetch_symbol_price(client: httpx.AsyncClient, symbol: str):
-    """One REST call to MetaApi → current-price endpoint."""
-    url = f"{BASE_URL}/users/current/accounts/{ACCOUNT_ID}/symbols/{symbol}/current-price"
-    try:
-        r = await client.get(url, headers=HEADERS, timeout=10)
-        r.raise_for_status()
-        data = r.json()
-        return symbol, {
-            "bid":  data["bid"],
-            "ask":  data["ask"],
-            "time": data["time"],
-        }
-    except httpx.HTTPStatusError as e:        # 4xx / 5xx
-        return symbol, {"error": f"{e.response.status_code} {e.response.text}"}
-    except Exception as e:                    # network or JSON error
-        return symbol, {"error": str(e)}
-
-async def fetch_prices() -> dict:
-    """Return a {symbol: {...}} dict for all symbols in SYMBOLS."""
-    async with httpx.AsyncClient() as client:
-        tasks = [fetch_symbol_price(client, s) for s in SYMBOLS]
-        results = await asyncio.gather(*tasks)
-    return dict(results)
-
-# run locally:  python metaapi_client.py
-if __name__ == "__main__":
-    print(asyncio.run(fetch_prices()))
+async def fetch_candles(
+    symbol: str,
+    timeframe: str = "1m",
+    limit: int = 100
+) -> list[dict]:
+    """
+    Returns the most-recent `limit` candles (MetaApi calls them 'bars').
+    """
+    params = {"timeframe": timeframe, "limit": limit}
+    data   = await _call_metaapi(
+        f"/users/current/accounts/{ACC_ID}/symbols/{symbol}/candles",
+        params=params
+    )
+    return data.get("candles", [])
