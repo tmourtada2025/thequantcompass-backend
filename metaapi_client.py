@@ -1,45 +1,30 @@
 import os
-from metaapi.cloud_metaapi_sdk import MetaApi
+from dotenv import load_dotenv
+from metaapi.cloud.metaapi_client import MetaApi
 
-# Read from Render environment variables directly
-TOKEN = os.getenv("META_API_TOKEN")
+# Load environment variables
+load_dotenv()
+
+META_API_TOKEN = os.getenv("META_API_TOKEN")
 ACCOUNT_ID = os.getenv("ACCOUNT_ID")
 
-if not TOKEN or not ACCOUNT_ID:
+if not META_API_TOKEN or not ACCOUNT_ID:
     raise ValueError("❌ Missing META_API_TOKEN or ACCOUNT_ID in environment variables.")
 
-SYMBOLS = ['US30.cash', 'XAUUSD']
+metaapi = MetaApi(META_API_TOKEN)
 
 async def fetch_prices():
-    metaapi = MetaApi(TOKEN)
+    account = await metaapi.metatrader_account_api.get_account(ACCOUNT_ID)
+    if account.state != 'DEPLOYED':
+        print(f'Account {ACCOUNT_ID} is not deployed yet. Deploying now...')
+        await account.deploy()
+        # Wait for it to become deployed
+        await account.wait_until_deployed()
 
-    print("Connecting to MetaAPI...")
-    accounts = await metaapi.metatrader_account_api.get_accounts()
-
-    # Use the first connected and deployed account
-    account = next((acc for acc in accounts if acc['state'] == 'DEPLOYED'), None)
-
-    if not account:
-        raise Exception("No deployed MetaTrader accounts found.")
-
-    account_id = account['id']
-    print(f"Connected to account ID: {account_id}")
-
-    connection = await metaapi.metatrader_account_api.get_account(account_id)
-    connection = await connection.connect()
+    connection = account.get_streaming_connection()
+    await connection.connect()
     await connection.wait_synchronized()
 
-    results = {}
-
-    for symbol in SYMBOLS:
-        try:
-            price = await connection.get_symbol_price(symbol)
-            results[symbol] = {
-                'bid': price['bid'],
-                'ask': price['ask'],
-                'time': price['time']
-            }
-        except Exception as e:
-            results[symbol] = {'error': str(e)}
-
-    return results
+    # Example: get price for US30
+    us30_price = await connection.subscribe_to_market_data('US30')
+    return {"symbol": "US30", "price": us30_price}
