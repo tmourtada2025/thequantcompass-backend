@@ -1,4 +1,5 @@
 from metaapi_cloud_sdk import MetaApi
+load_dotenv()
 import os
 import asyncio
 
