@@ -1,4 +1,4 @@
-from metaapi.cloud_metaapi_sdk import MetaApi
+from metaapi_cloud_metaapi_sdk import MetaApi
 import os
 from dotenv import load_dotenv
 
