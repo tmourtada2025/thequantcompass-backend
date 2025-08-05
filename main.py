@@ -4,9 +4,10 @@ from metaapi_client import fetch_prices
 app = FastAPI()
 
 @app.get("/")
-async def root():
-    return {"message": "MetaAPI Backend is Live"}
+def read_root():
+    return {"message": "Welcome to TradeEdge Backend"}
 
 @app.get("/prices")
 async def get_prices():
-    return await fetch_prices()
+    prices = await fetch_prices()
+    return prices
