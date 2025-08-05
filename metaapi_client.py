@@ -1,34 +1,45 @@
-# main.py
-from fastapi import FastAPI, Query
-from metaapi_client import fetch_prices, fetch_candles
+import os, httpx, asyncio
+from typing import Dict
 
-app = FastAPI()
+# --------------------------------------------------------------------
+# 1.  ENVIRONMENT (must exist in Render → Environment)
+# --------------------------------------------------------------------
+TOKEN  = os.getenv("METAAPI_TOKEN")
+ACC_ID = os.getenv("METAAPI_ACCOUNT_ID")
+REGION = os.getenv("METAAPI_REGION", "london")        # london | new-york | frankfurt | ...
 
-@app.get("/")
-def root():
-    return {
-        "routes": [
-            "/prices?symbol=US30.cash",
-            "/candles?symbol=US30.cash&timeframe=5m&limit=50"
-        ]
-    }
+if not (TOKEN and ACC_ID):
+    raise RuntimeError("METAAPI_TOKEN and METAAPI_ACCOUNT_ID must be set as env-vars")
 
-
-@app.get("/prices")
-async def prices(symbol: str = Query("US30.cash")):
-    """
-    GET /prices?symbol=US30.cash
-    """
-    return await fetch_prices(symbol)
+BASE    = f"https://mt-client-api-v1.{REGION}.agiliumtrade.ai"
+HEADERS = {"auth-token": TOKEN}
 
 
-@app.get("/candles")
-async def candles(
-    symbol: str = Query(..., description="e.g. US30.cash"),
-    timeframe: str = Query("1m", pattern="^(1m|5m|15m|1h|4h|1d)$"),
-    limit: int = Query(100, ge=1, le=1000)
-):
-    """
-    GET /candles?symbol=US30.cash&timeframe=5m&limit=50
-    """
-    return await fetch_candles(symbol, timeframe, limit)
+# --------------------------------------------------------------------
+# 2.  Internal helper
+# --------------------------------------------------------------------
+async def _get(url: str) -> Dict:
+    async with httpx.AsyncClient(http2=True, timeout=10) as c:
+        r = await c.get(url, headers=HEADERS)
+        r.raise_for_status()
+        return r.json()
+
+
+# --------------------------------------------------------------------
+# 3.  Called by /prices  – no arguments, returns current price for US30
+# --------------------------------------------------------------------
+async def fetch_prices() -> Dict:
+    url = f"{BASE}/users/current/accounts/{ACC_ID}/symbols/US30/current-price"
+    return await _get(url)
+
+
+# --------------------------------------------------------------------
+# 4.  Called by /candles  – symbol + timeframe (default 1H)
+# --------------------------------------------------------------------
+async def fetch_candle(symbol: str, tf: str = "1H") -> Dict:
+    url = (
+        f"{BASE}/users/current/accounts/{ACC_ID}"
+        f"/symbols/{symbol}/candles/latest?timeframe={tf}&count=1"
+    )
+    data = await _get(url)
+    return data[0] if isinstance(data, list) else data
