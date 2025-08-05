@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from metaapi.cloud.metaapi_client import MetaApi
+from metaapi.cloud_metaapi_sdk import MetaApi  # ✅ Corrected import
 
 # Load environment variables
 load_dotenv()
@@ -18,13 +18,11 @@ async def fetch_prices():
     if account.state != 'DEPLOYED':
         print(f'Account {ACCOUNT_ID} is not deployed yet. Deploying now...')
         await account.deploy()
-        # Wait for it to become deployed
         await account.wait_until_deployed()
 
     connection = account.get_streaming_connection()
     await connection.connect()
     await connection.wait_synchronized()
 
-    # Example: get price for US30
     us30_price = await connection.subscribe_to_market_data('US30')
     return {"symbol": "US30", "price": us30_price}
