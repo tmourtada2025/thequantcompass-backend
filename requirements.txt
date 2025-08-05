@@ -1,6 +1,6 @@
-fastapi==0.110.1
-uvicorn==0.30.1
-python-dotenv==1.0.1
+fastapi
+uvicorn
+python-dotenv
 metaapi-cloud-sdk==28.0.7
 openai==1.98.0
 requests
