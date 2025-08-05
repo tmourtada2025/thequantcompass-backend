@@ -1,16 +1,21 @@
-from metaapi_cloud_sdk import MetaApi
-load_dotenv()
 import os
 import asyncio
+from dotenv import load_dotenv
+from metaapi_cloud_sdk import MetaApi
 
-# Your MetaApi token from environment variables (set this in Render's settings)
+# Load environment variables
+load_dotenv()
+
+# Read sensitive config from environment
 META_API_TOKEN = os.getenv("META_API_TOKEN")
-
-# Your account ID (set this in environment variables too)
 ACCOUNT_ID = os.getenv("ACCOUNT_ID")
 
-metaapi = MetaApi(META_API_TOKEN)
+# Fail early if any are missing
+if not META_API_TOKEN or not ACCOUNT_ID:
+    raise ValueError("❌ Missing META_API_TOKEN or ACCOUNT_ID in environment variables.")
 
+# Initialize MetaApi
+metaapi = MetaApi(META_API_TOKEN)
 
 async def fetch_prices():
     try:
@@ -23,9 +28,9 @@ async def fetch_prices():
         await connection.connect()
         await connection.wait_synchronized()
 
-        # Example: Fetching price for US30 symbol
-        quote = await connection.subscribe_to_market_data('US30')
+        await connection.subscribe_to_market_data('US30')
         price = connection.price('US30')
+
         return {
             "symbol": "US30",
             "bid": price['bid'],
@@ -35,8 +40,7 @@ async def fetch_prices():
     except Exception as e:
         return {"error": str(e)}
 
-
-# For local test
+# For local testing
 if __name__ == "__main__":
     result = asyncio.run(fetch_prices())
     print(result)
