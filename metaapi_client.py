@@ -1,76 +1,34 @@
-# metaapi_client.py
-import os, asyncio, httpx, time
-from fastapi import HTTPException
+# main.py
+from fastapi import FastAPI, Query
+from metaapi_client import fetch_prices, fetch_candles
 
-# Pull secrets that Render already has
-TOKEN  = os.getenv("METAAPI_TOKEN")
-ACC_ID = os.getenv("METAAPI_ACCOUNT_ID")
+app = FastAPI()
 
-if not TOKEN or not ACC_ID:
-    raise RuntimeError("METAAPI_TOKEN or METAAPI_ACCOUNT_ID is missing")
+@app.get("/")
+def root():
+    return {
+        "routes": [
+            "/prices?symbol=US30.cash",
+            "/candles?symbol=US30.cash&timeframe=5m&limit=50"
+        ]
+    }
 
-# Use the newer, always-resolvable hostname
-BASE_URL = "https://mt-client-api-v1.metaapi.cloud"
 
-HEADERS = {"auth-token": TOKEN}
-
-async def _call_metaapi(path: str, params: dict | None = None) -> dict:
+@app.get("/prices")
+async def prices(symbol: str = Query("US30.cash")):
     """
-    Helper that performs an HTTP GET with automatic retries +
-    nice error messages instead of 500s.
+    GET /prices?symbol=US30.cash
     """
-    url     = f"{BASE_URL}{path}"
-    retries = 3
-    backoff = 0.7
-
-    async with httpx.AsyncClient(timeout=10) as client:
-        for attempt in range(retries):
-            try:
-                r = await client.get(url, headers=HEADERS, params=params)
-                r.raise_for_status()
-                return r.json()
-
-            except httpx.RequestError as e:
-                if attempt == retries - 1:
-                    raise HTTPException(
-                        502,
-                        detail=f"DNS / network error contacting MetaApi: {e}"
-                    )
-                time.sleep(backoff)
-                backoff *= 2
-
-            except httpx.HTTPStatusError as e:
-                # MetaApi gives good JSON bodies – surface them
-                raise HTTPException(
-                    e.response.status_code,
-                    detail=e.response.json()
-                ) from None
+    return await fetch_prices(symbol)
 
 
-async def fetch_prices(symbol: str = "US30.cash") -> dict:
+@app.get("/candles")
+async def candles(
+    symbol: str = Query(..., description="e.g. US30.cash"),
+    timeframe: str = Query("1m", pattern="^(1m|5m|15m|1h|4h|1d)$"),
+    limit: int = Query(100, ge=1, le=1000)
+):
     """
-    Returns the live bid / ask for a single symbol.
+    GET /candles?symbol=US30.cash&timeframe=5m&limit=50
     """
-    data = await _call_metaapi(
-        f"/users/current/accounts/{ACC_ID}/symbols/{symbol}/price"
-    )
-    # MetaApi returns an array under 'prices'
-    if not data or not data.get("price"):
-        raise HTTPException(503, detail="Price feed temporarily unavailable")
-    return data["price"]    # {'bid': .., 'ask': .., 'time': ..}
-
-
-async def fetch_candles(
-    symbol: str,
-    timeframe: str = "1m",
-    limit: int = 100
-) -> list[dict]:
-    """
-    Returns the most-recent `limit` candles (MetaApi calls them 'bars').
-    """
-    params = {"timeframe": timeframe, "limit": limit}
-    data   = await _call_metaapi(
-        f"/users/current/accounts/{ACC_ID}/symbols/{symbol}/candles",
-        params=params
-    )
-    return data.get("candles", [])
+    return await fetch_candles(symbol, timeframe, limit)
