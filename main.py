@@ -17,6 +17,7 @@ import logging
 from market_data import PolygonDataProvider, Timeframe, BacktestEngine
 from smc_engine import SMCEngine, SMCSignal
 from risk_manager import RiskManager, AccountPhase, RiskLevel
+from ai_analyst import AIAnalyst, generate_signal_explanation, generate_weekly_report, analyze_strategy_performance
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -42,6 +43,7 @@ app.add_middleware(
 polygon_provider: Optional[PolygonDataProvider] = None
 smc_engine = SMCEngine()
 risk_manager = RiskManager()
+ai_analyst = AIAnalyst()
 
 # Pydantic models for API requests/responses
 class AccountUpdate(BaseModel):
@@ -505,6 +507,134 @@ async def get_supported_timeframes():
             "W1": "1 week"
         }
     }
+
+# AI Analysis Endpoints
+@app.post("/ai/explain-signal")
+async def explain_signal(signal_data: dict):
+    """
+    Generate AI explanation for a trading signal
+    """
+    try:
+        explanation = await generate_signal_explanation(signal_data)
+        return {
+            "status": "success",
+            "explanation": explanation,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error explaining signal: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/ai/market-outlook")
+async def get_market_outlook(timeframe: str = Query("weekly", description="Timeframe for outlook")):
+    """
+    Generate AI-powered market outlook
+    """
+    try:
+        outlook = await ai_analyst.generate_market_outlook(timeframe)
+        return {
+            "status": "success",
+            "timeframe": timeframe,
+            "outlook": outlook,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error generating market outlook: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/ai/weekly-report")
+async def generate_report(symbols: List[str]):
+    """
+    Generate comprehensive weekly trading report
+    """
+    try:
+        report = await generate_weekly_report(symbols)
+        return {
+            "status": "success",
+            "report": {
+                "title": report.title,
+                "executive_summary": report.executive_summary,
+                "market_overview": report.market_overview,
+                "technical_analysis": report.technical_analysis,
+                "fundamental_factors": report.fundamental_factors,
+                "trade_recommendations": report.trade_recommendations,
+                "risk_assessment": report.risk_assessment,
+                "conclusion": report.conclusion,
+                "charts_needed": report.charts_needed,
+                "timestamp": report.timestamp.isoformat()
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error generating weekly report: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/ai/analyze-performance")
+async def analyze_performance(backtest_results: List[dict]):
+    """
+    Generate AI insights from backtesting performance
+    """
+    try:
+        insights = await analyze_strategy_performance(backtest_results)
+        return {
+            "status": "success",
+            "insights": insights,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error analyzing performance: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/ai/analyze-market/{symbol}")
+async def analyze_market_structure(
+    symbol: str,
+    timeframe: str = Query("H1", description="Timeframe for analysis")
+):
+    """
+    Generate comprehensive market structure analysis for a symbol
+    """
+    try:
+        # Get market data
+        if not polygon_provider:
+            raise HTTPException(status_code=503, detail="Market data service not available")
+        
+        # Get recent price data
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=30)
+        
+        price_data = await polygon_provider.get_historical_data(
+            symbol, timeframe, start_date, end_date
+        )
+        
+        if price_data.empty:
+            raise HTTPException(status_code=404, detail=f"No data available for {symbol}")
+        
+        # Get SMC analysis
+        smc_analysis = smc_engine.analyze_market_structure(price_data)
+        
+        # Generate AI analysis
+        analysis = await ai_analyst.analyze_market_structure(
+            symbol, timeframe, price_data, smc_analysis
+        )
+        
+        return {
+            "status": "success",
+            "analysis": {
+                "symbol": analysis.symbol,
+                "timeframe": analysis.timeframe,
+                "analysis_type": analysis.analysis_type,
+                "summary": analysis.summary,
+                "detailed_analysis": analysis.detailed_analysis,
+                "key_levels": analysis.key_levels,
+                "sentiment": analysis.sentiment,
+                "confidence": analysis.confidence,
+                "trade_ideas": analysis.trade_ideas,
+                "risk_factors": analysis.risk_factors,
+                "timestamp": analysis.timestamp.isoformat()
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error analyzing market structure for {symbol}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Error handlers
 @app.exception_handler(404)
